@@ -1,0 +1,75 @@
+name: Build OurSpot Installable APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout holder repository
+        uses: actions/checkout@v4
+
+      - name: Prepare OurSpot Android project
+        run: |
+          rm -rf ourspot-build
+          git clone --depth 1 https://github.com/muhammadsci1/custom-webview-template.git ourspot-build
+          cd ourspot-build
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+
+          # Configure the app to open the live OurSpot platform.
+          cfg = Path('app/src/main/assets/config.json')
+          data = json.loads(cfg.read_text())
+          data['launch_url'] = 'https://ourspot-jaipur.genai1010.chatgpt.site/'
+          data['app_name'] = 'OurSpot'
+          data['version'] = '1.1.0'
+          data['landing_enabled'] = False
+          data['landing_delay_ms'] = 0
+          cfg.write_text(json.dumps(data, indent=2) + '\n')
+
+          strings = Path('app/src/main/res/values/strings.xml')
+          strings.write_text('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="app_name">OurSpot</string>\n</resources>\n')
+
+          gradle = Path('app/build.gradle')
+          s = gradle.read_text()
+          s = s.replace('applicationId "com.custom.browser"', 'applicationId "com.ourspot.mobile"')
+          s = s.replace('versionCode 1', 'versionCode 11')
+          s = s.replace('versionName "1.0.0"', 'versionName "1.1.0"')
+          # Use one unique package name for the debug build as well, avoiding conflicts with prior test APKs.
+          s = s.replace('applicationIdSuffix ".debug"', '')
+          s = s.replace('versionNameSuffix "-debug"', '')
+          gradle.write_text(s)
+          PY
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.2'
+
+      - name: Build debug APK with Android Gradle Plugin
+        working-directory: ourspot-build
+        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK exists
+        run: |
+          test -f ourspot-build/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh ourspot-build/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload OurSpot APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OurSpot-Installable-APK
+          path: ourspot-build/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+          if-no-files-found: error
