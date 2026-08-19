@@ -1,0 +1,40 @@
+name: Build OurSpot Live
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'ourspot/chunk0.txt'
+      - 'ourspot/chunk1.txt'
+      - 'ourspot/chunk2.txt'
+      - 'ourspot/chunk3.txt'
+      - 'ourspot/patch.js'
+      - '.github/workflows/build-ourspot-live.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build standalone OurSpot HTML
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64,gzip
+          base=Path('ourspot')
+          b64=''.join((base/f'chunk{i}.txt').read_text().strip() for i in range(4))
+          html=gzip.decompress(base64.b64decode(b64)).decode('utf-8')
+          patch=(base/'patch.js').read_text(encoding='utf-8')
+          html=html.replace('</body>', '<script>'+patch.replace('</script>','<\\/script>')+'</script></body>')
+          (base/'live.html').write_text(html, encoding='utf-8')
+          PY
+      - name: Commit standalone live page
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add ourspot/live.html
+          git diff --cached --quiet || git commit -m 'Build standalone OurSpot live page [skip ci]'
+          git push
